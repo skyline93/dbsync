@@ -1,11 +1,15 @@
 import argparse
 import configparser
 import psycopg2
+import boto3
+import os
+
 
 def load_config(config_file):
     config = configparser.ConfigParser()
     config.read(config_file)
     return config
+
 
 def get_table_dependencies(cursor, table_name):
     """获取表的依赖关系"""
@@ -23,6 +27,7 @@ def get_table_dependencies(cursor, table_name):
             AND tc.table_name = '{table_name}';
     """)
     return [row[0] for row in cursor.fetchall()]
+
 
 def backup_table_to_sql(host, port, database, user, password, table_name, output_file):
     try:
@@ -53,6 +58,7 @@ def backup_table_to_sql(host, port, database, user, password, table_name, output
     finally:
         cursor.close()
         connection.close()
+
 
 def backup_database_tables(host, port, database, user, password, table_names, output_file):
     try:
@@ -85,6 +91,23 @@ def backup_database_tables(host, port, database, user, password, table_names, ou
         cursor.close()
         connection.close()
 
+
+def upload_to_s3(s3_bucket, s3_key, local_file, aws_access_key, aws_secret_key, region):
+    """将备份文件上传到 S3"""
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=aws_access_key,
+        aws_secret_access_key=aws_secret_key,
+        region_name=region
+    )
+    
+    try:
+        s3_client.upload_file(local_file, s3_bucket, s3_key)
+        print(f"成功上传文件 '{local_file}' 到 S3 存储桶 '{s3_bucket}'，键名 '{s3_key}'")
+    except Exception as e:
+        print(f"上传到 S3 失败: {e}")
+
+
 def restore_table_from_sql(host, port, database, user, password, input_file):
     try:
         connection = psycopg2.connect(
@@ -109,6 +132,7 @@ def restore_table_from_sql(host, port, database, user, password, input_file):
     finally:
         cursor.close()
         connection.close()
+
 
 def restore_database_tables(host, port, database, user, password, table_names, input_file):
     try:
@@ -141,6 +165,7 @@ def restore_database_tables(host, port, database, user, password, table_names, i
         cursor.close()
         connection.close()
 
+
 def main():
     parser = argparse.ArgumentParser(description='PostgreSQL 数据库备份与恢复工具')
     parser.add_argument('--config', required=True, help='配置文件路径')
@@ -150,6 +175,7 @@ def main():
 
     config = load_config(args.config)
     db_config = config['database']
+    s3_config = config['s3']
 
     host = db_config['host']
     port = db_config['port']
@@ -161,13 +187,25 @@ def main():
         backup_config = config['backup']
         table_names = [table.strip() for table in backup_config['tables'].split(',')]
         output_file = backup_config['output']
+        
+        # 执行备份
         backup_database_tables(host, port, database, user, password, table_names, output_file)
+
+        # 上传到 S3
+        s3_bucket = s3_config['bucket']
+        s3_key = os.path.basename(output_file)  # 可以根据需要自定义键名
+        aws_access_key = s3_config['aws_access_key']
+        aws_secret_key = s3_config['aws_secret_key']
+        region = s3_config['region']
+        
+        upload_to_s3(s3_bucket, s3_key, output_file, aws_access_key, aws_secret_key, region)
 
     elif args.command == 'restore':
         restore_config = config['restore']
         table_names = [table.strip() for table in restore_config['tables'].split(',')]
         input_file = restore_config['input']
         restore_database_tables(host, port, database, user, password, table_names, input_file)
+
 
 if __name__ == "__main__":
     main()
