@@ -209,6 +209,12 @@ def main():
     backup_user = args.user if args.user else db_config['user']
     backup_password = args.password if args.password else db_config['password']
 
+    # 设置恢复时的数据库连接信息
+    restore_host = args.host if args.host else db_config['host']
+    restore_database = args.database if args.database else db_config['database']
+    restore_user = args.user if args.user else db_config['user']
+    restore_password = args.password if args.password else db_config['password']
+
     # 执行备份操作
     if args.command == 'backup':
         backup_database_tables(
@@ -219,12 +225,6 @@ def main():
             table_names=args.table,
             output_file=args.output
         )
-
-    # 设置恢复时的数据库连接信息
-    restore_host = args.host if args.host else db_config['host']
-    restore_database = args.database if args.database else db_config['database']
-    restore_user = args.user if args.user else db_config['user']
-    restore_password = args.password if args.password else db_config['password']
 
     # 执行恢复操作
     elif args.command == 'restore':
